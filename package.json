@@ -1,0 +1,14 @@
+{
+  "name": "finance-qa-evaluator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Real-time AI evaluation of student questions and presenter responses in finance project presentations.",
+  "scripts": {
+    "dev": "netlify dev",
+    "deploy": "netlify deploy --prod"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

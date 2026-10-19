@@ -1,0 +1,338 @@
+<!--
+  LEGACY PROTOTYPE — kept for the record, not for deployment.
+
+  This was the first working version, built and run as an interactive widget inside a Claude.ai
+  conversation. It relies on a Claude.ai-only global, sendPrompt(), to hand the exchange to the
+  chat model, and the instructor copied the scores back by hand (response was scored /15 then).
+
+  Opened as a normal web page, the Evaluate button does nothing because sendPrompt() is undefined.
+  The maintained, deployable version is public/index.html + netlify/functions/evaluate.js.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finance Q&A Evaluator</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#08080f;color:#eeedf8;font-family:'Syne',sans-serif;padding:1.5rem 1rem 3rem;min-height:100vh}
+.wrap{max-width:660px;margin:0 auto}
+.hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:1.5rem}
+.hdr-left h1{font-size:19px;font-weight:700;letter-spacing:-.02em;background:linear-gradient(120deg,#fff 30%,#9d99cc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hdr-left p{font-size:12px;color:#555;margin-top:3px}
+.hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hdr-right label{font-size:11px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.05em}
+select#grp{background:#111;border:1px solid #2a2a3a;color:#eee;padding:7px 10px;border-radius:8px;font-size:13px;font-weight:600;outline:none;cursor:pointer;font-family:'Syne'}
+.excnt{background:linear-gradient(135deg,#6c63ff,#9d8fff);color:#fff;font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;white-space:nowrap}
+.ctx-wrap{background:#111;border:1px solid #1e1e2e;border-radius:10px;padding:11px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.ctx-wrap label{font-size:10px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.ctx-wrap input{flex:1;background:transparent;border:none;outline:none;font-size:13px;color:#eee;font-family:'DM Mono',monospace}
+.ctx-wrap input::placeholder{color:#333}
+.panels{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+@media(max-width:480px){.panels{grid-template-columns:1fr}}
+.panel{background:#0e0e18;border:1px solid #1e1e30;border-radius:14px;overflow:hidden;transition:border-color .2s}
+.panel.rec-q,.panel.rec-a{border-color:#f05a5a;box-shadow:0 0 0 2px rgba(240,90,90,0.1)}
+.panel.has-q{border-color:#4a44aa}
+.panel.has-a{border-color:#1a7a4a}
+.phead{padding:10px 14px;border-bottom:1px solid #1a1a28;display:flex;align-items:center;gap:8px}
+.pill{font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;letter-spacing:.04em}
+.pill.q{background:rgba(108,99,255,0.18);color:#a09df5}
+.pill.a{background:rgba(45,203,143,0.14);color:#2dcb8f}
+.ptitle{font-size:12px;font-weight:600;flex:1}
+.ptitle.q{color:#a09df5}
+.ptitle.a{color:#2dcb8f}
+.rbtn{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;border:none;cursor:pointer;font-family:'Syne';transition:all .15s;white-space:nowrap}
+.rbtn.q-idle{background:rgba(108,99,255,0.15);color:#a09df5}
+.rbtn.a-idle{background:rgba(45,203,143,0.12);color:#2dcb8f}
+.rbtn.recording{background:rgba(240,90,90,0.15);color:#f05a5a;animation:blink 1s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.45}}
+.rdot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.pbody{padding:12px 14px;min-height:78px}
+textarea.tbox{width:100%;background:transparent;border:none;outline:none;resize:none;font-size:13px;line-height:1.65;color:#ddd;font-family:'DM Mono',monospace;min-height:54px;overflow:hidden}
+textarea.tbox::placeholder{color:#333}
+.clrlink{font-size:11px;color:#333;background:none;border:none;cursor:pointer;text-decoration:underline;text-underline-offset:2px;display:none;font-family:'Syne'}
+.clrlink:hover{color:#666}
+.evalrow{display:flex;gap:8px;margin-bottom:10px}
+.evalbtn{flex:1;padding:13px;background:linear-gradient(135deg,#6c63ff,#9d8fff);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Syne';transition:all .18s}
+.evalbtn:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px)}
+.evalbtn:disabled{background:#1a1a28;color:#333;cursor:not-allowed;transform:none}
+.evalbtn.sent{background:linear-gradient(135deg,#059669,#10b981)}
+.nextbtn{padding:13px 16px;background:#111;color:#666;border:1px solid #222;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Syne'}
+.nextbtn:hover{background:#161620;color:#aaa}
+.scorepanel{display:none;background:#0e0e18;border:1px solid #4a44aa;border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.scorepanel.on{display:block;animation:fadeup .25s ease}
+@keyframes fadeup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.sp-label{font-size:11px;font-weight:700;color:#6c63ff;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.arrow-anim{display:inline-block;animation:bob .8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+.sc-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.sc-field label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.sc-field.q label{color:#a09df5}
+.sc-field.a label{color:#2dcb8f}
+.sc-field.t label{color:#f0a847}
+.sc-input{width:64px;padding:8px 10px;font-size:16px;font-weight:700;border-radius:8px;outline:none;text-align:center;border:2px solid;font-family:'DM Mono'}
+.sc-input.q{background:#16153a;border-color:#4a44aa;color:#a09df5}
+.sc-input.a{background:#0d2a1e;border-color:#1a7a4a;color:#2dcb8f}
+.sc-combined{font-size:24px;font-weight:700;color:#f0a847;font-family:'DM Mono';padding-top:4px}
+.sc-combined span{font-size:13px;color:#555;font-weight:400}
+.sp-btns{display:flex;gap:8px}
+.savebtn{flex:1;padding:10px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Syne'}
+.savebtn:hover{filter:brightness(1.1)}
+.skipbtn{padding:10px 14px;background:#111;color:#555;border:1px solid #222;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Syne'}
+.logwrap{display:none;margin-top:1rem}
+.logwrap.on{display:block}
+.loghdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.loghdr span{font-size:11px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.06em}
+.loghdr-btns{display:flex;gap:8px}
+.copybtn{font-size:11px;color:#a09df5;background:none;border:1px solid #2a2a4a;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'Syne'}
+.clrlogbtn{font-size:11px;color:#444;background:none;border:none;cursor:pointer;text-decoration:underline;font-family:'Syne'}
+.logtable-wrap{border:1px solid #1a1a28;border-radius:10px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{padding:9px 12px;text-align:left;font-size:10px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.05em;background:#0e0e18;border-bottom:1px solid #1a1a28}
+td{padding:9px 12px;border-bottom:1px solid #111;color:#888;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#0e0e18}
+.gtag{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;background:rgba(108,99,255,0.18);color:#a09df5;white-space:nowrap}
+.qcell{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#666}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div class="hdr-left">
+      <h1>Finance Q&A Evaluator</h1>
+      <p>Record or type → Evaluate → enter scores → Save & Next</p>
+    </div>
+    <div class="hdr-right">
+      <label>Group</label>
+      <select id="grp">
+        <option>Group 1</option><option>Group 2</option><option>Group 3</option>
+        <option>Group 4</option><option>Group 5</option><option>Group 6</option>
+        <option>Group 7</option><option>Group 8</option><option>Group 9</option>
+        <option>Group 10</option><option>Group 11</option><option>Group 12</option>
+        <option>Group 13</option><option>Group 14</option><option>Group 15</option>
+      </select>
+      <div class="excnt" id="excnt">Exchange #1</div>
+    </div>
+  </div>
+
+  <div class="ctx-wrap">
+    <label>Context</label>
+    <input id="ctx" type="text" placeholder="e.g. AAPL earnings miss, TSLA recall, NVDA AI fundamentals…">
+  </div>
+
+  <div class="panels">
+    <div class="panel" id="pnl-q">
+      <div class="phead">
+        <span class="pill q">Q</span>
+        <span class="ptitle q">Audience question</span>
+        <button class="rbtn q-idle" id="btn-q" onclick="toggleRec('q')"><span class="rdot"></span>Record</button>
+      </div>
+      <div class="pbody">
+        <textarea class="tbox" id="txt-q" rows="3" placeholder="Record or type question…" oninput="onChange('q')"></textarea>
+        <button class="clrlink" id="clr-q" onclick="clearBox('q')">clear</button>
+      </div>
+    </div>
+    <div class="panel" id="pnl-a">
+      <div class="phead">
+        <span class="pill a">A</span>
+        <span class="ptitle a">Presenter response</span>
+        <button class="rbtn a-idle" id="btn-a" onclick="toggleRec('a')"><span class="rdot"></span>Record</button>
+      </div>
+      <div class="pbody">
+        <textarea class="tbox" id="txt-a" rows="3" placeholder="Record or type response…" oninput="onChange('a')"></textarea>
+        <button class="clrlink" id="clr-a" onclick="clearBox('a')">clear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="evalrow">
+    <button class="evalbtn" id="evalbtn" onclick="doEval()" disabled>Evaluate this exchange ↗</button>
+    <button class="nextbtn" onclick="reset()">Next</button>
+  </div>
+
+  <div class="scorepanel" id="scorepanel">
+    <div class="sp-label"><span class="arrow-anim">↓</span> Scroll down for scores, then enter them here</div>
+    <div class="sc-grid">
+      <div class="sc-field q">
+        <label>Question /10</label>
+        <input class="sc-input q" id="sc-q" type="number" min="0" max="10" placeholder="—" oninput="calcCombined()">
+      </div>
+      <div class="sc-field a">
+        <label>Response /15</label>
+        <input class="sc-input a" id="sc-a" type="number" min="0" max="15" placeholder="—" oninput="calcCombined()">
+      </div>
+      <div class="sc-field t">
+        <label>Combined</label>
+        <div class="sc-combined" id="combined">—<span> /25</span></div>
+      </div>
+    </div>
+    <div class="sp-btns">
+      <button class="savebtn" onclick="saveAndNext()">Save & Next exchange</button>
+      <button class="skipbtn" onclick="skipNext()">Skip score</button>
+    </div>
+  </div>
+
+  <div class="logwrap" id="logwrap">
+    <div class="loghdr">
+      <span>Session log</span>
+      <div class="loghdr-btns">
+        <button class="copybtn" onclick="copyLog()">Copy for Excel</button>
+        <button class="clrlogbtn" onclick="clearLog()">Clear</button>
+      </div>
+    </div>
+    <div class="logtable-wrap">
+      <table><thead><tr>
+        <th>Group</th><th>Ex</th><th>Question</th>
+        <th style="color:#a09df5">Q /10</th>
+        <th style="color:#2dcb8f">A /15</th>
+        <th style="color:#f0a847">Total</th>
+        <th>Time</th>
+      </tr></thead>
+      <tbody id="logbody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<script>
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+var recs={q:null,a:null}, active={q:false,a:false}, texts={q:'',a:''};
+var n=1, log=[], pending=null;
+
+function onChange(side){
+  var ta=document.getElementById('txt-'+side);
+  texts[side]=ta.value;
+  ta.style.height='auto'; ta.style.height=ta.scrollHeight+'px';
+  document.getElementById('clr-'+side).style.display=ta.value.trim()?'block':'none';
+  document.getElementById('pnl-'+side).className='panel'+(ta.value.trim()?(side==='q'?' has-q':' has-a'):'');
+  checkReady();
+}
+
+function checkReady(){
+  document.getElementById('evalbtn').disabled=!(texts.q.trim().length>3&&texts.a.trim().length>3);
+}
+
+function clearBox(side){
+  texts[side]='';
+  var ta=document.getElementById('txt-'+side);
+  ta.value='';ta.style.height='auto';
+  document.getElementById('clr-'+side).style.display='none';
+  document.getElementById('pnl-'+side).className='panel';
+  checkReady();
+}
+
+function toggleRec(side){
+  if(!SR){alert('Voice recording requires Chrome or Edge. Please type directly.');return;}
+  active[side]?stopRec(side):startRec(side);
+}
+
+function startRec(side){
+  var other=side==='q'?'a':'q';
+  if(active[other])stopRec(other);
+  var r=new SR();r.continuous=true;r.interimResults=true;r.lang='en-US';
+  var final='';
+  r.onresult=function(e){
+    var interim='';
+    for(var i=e.resultIndex;i<e.results.length;i++){
+      if(e.results[i].isFinal)final+=e.results[i][0].transcript+' ';
+      else interim+=e.results[i][0].transcript;
+    }
+    var full=final+interim;
+    var ta=document.getElementById('txt-'+side);
+    ta.value=full;texts[side]=full;
+    ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';
+    document.getElementById('clr-'+side).style.display=full.trim()?'block':'none';
+    checkReady();
+  };
+  r.onerror=function(e){if(e.error!=='no-speech'){alert('Mic error: '+e.error);stopRec(side);}};
+  r.onend=function(){if(active[side])r.start();};
+  recs[side]=r;active[side]=true;final='';
+  r.start();
+  clearBox(side);
+  var btn=document.getElementById('btn-'+side);
+  btn.className='rbtn recording';
+  btn.innerHTML='<span class="rdot"></span>Stop';
+  document.getElementById('pnl-'+side).className='panel '+(side==='q'?'rec-q':'rec-a');
+}
+
+function stopRec(side){
+  if(recs[side]){recs[side].stop();recs[side]=null;}
+  active[side]=false;
+  var btn=document.getElementById('btn-'+side);
+  btn.className='rbtn '+(side==='q'?'q-idle':'a-idle');
+  btn.innerHTML='<span class="rdot"></span>Record';
+  document.getElementById('pnl-'+side).className='panel'+(texts[side].trim()?(side==='q'?' has-q':' has-a'):'');
+  checkReady();
+}
+
+function calcCombined(){
+  var q=parseInt(document.getElementById('sc-q').value);
+  var a=parseInt(document.getElementById('sc-a').value);
+  document.getElementById('combined').innerHTML=(isNaN(q)||isNaN(a)?'—':(q+a))+'<span> /25</span>';
+}
+
+function doEval(){
+  var grp=document.getElementById('grp').value;
+  var ctx=document.getElementById('ctx').value.trim()||'finance presentation';
+  var q=texts.q.trim(),a=texts.a.trim();
+  if(!q||!a)return;
+  sendPrompt('[Finance Q&A Evaluation — '+grp+', Exchange #'+n+']\n\nContext: '+ctx+'\n\nQuestion: "'+q+'"\n\nResponse: "'+a+'"\n\nPlease evaluate:\n\nPART A — QUESTION (/10)\n- A1. Relevance to topic: X/5 — explanation\n- A2. Depth & critical thinking: X/5 — explanation\n- Question total: X/10\n- Strength: one sentence\n- Suggestion: one sentence\n\nPART B — PRESENTER RESPONSE (/15)\n- B1. Accuracy & financial knowledge: X/5 — explanation\n- B2. Depth & elaboration: X/5 — explanation\n- B3. Clarity & communication: X/5 — explanation\n- Response total: X/15\n- Strength: one sentence\n- Suggestion: one sentence\n\nCombined score: X/25');
+  pending={group:grp,ex:n,q:q.length>55?q.slice(0,55)+'…':q,time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})};
+  n++;
+  document.getElementById('excnt').textContent='Exchange #'+n;
+  var eb=document.getElementById('evalbtn');
+  eb.textContent='✓ Sent! Scroll down for scores ↓';eb.className='evalbtn sent';eb.disabled=true;
+  document.getElementById('sc-q').value='';document.getElementById('sc-a').value='';
+  document.getElementById('combined').innerHTML='—<span> /25</span>';
+  document.getElementById('scorepanel').className='scorepanel on';
+}
+
+function saveAndNext(){
+  if(!pending)return;
+  var sq=parseInt(document.getElementById('sc-q').value);
+  var sa=parseInt(document.getElementById('sc-a').value);
+  if(isNaN(sq)||isNaN(sa)){alert('Please enter both scores.');return;}
+  pending.sq=sq;pending.sa=sa;pending.tot=sq+sa;
+  log.push(pending);renderLog();reset();
+}
+
+function skipNext(){
+  if(pending){pending.sq='—';pending.sa='—';pending.tot='—';log.push(pending);renderLog();}
+  reset();
+}
+
+function reset(){
+  pending=null;
+  clearBox('q');clearBox('a');
+  if(active.q)stopRec('q');if(active.a)stopRec('a');
+  document.getElementById('scorepanel').className='scorepanel';
+  var eb=document.getElementById('evalbtn');
+  eb.textContent='Evaluate this exchange ↗';eb.className='evalbtn';eb.disabled=true;
+}
+
+function renderLog(){
+  if(!log.length){document.getElementById('logwrap').className='logwrap';return;}
+  document.getElementById('logwrap').className='logwrap on';
+  document.getElementById('logbody').innerHTML=log.slice().reverse().map(function(r){
+    return '<tr><td><span class="gtag">'+r.group+'</span></td><td style="color:#444">#'+r.ex+'</td>'
+      +'<td class="qcell">'+r.q+'</td>'
+      +'<td style="text-align:center;font-weight:700;color:#a09df5;font-family:\'DM Mono\'">'+r.sq+'</td>'
+      +'<td style="text-align:center;font-weight:700;color:#2dcb8f;font-family:\'DM Mono\'">'+r.sa+'</td>'
+      +'<td style="text-align:center;font-weight:700;color:#f0a847;font-family:\'DM Mono\'">'+r.tot+'</td>'
+      +'<td style="color:#333">'+r.time+'</td></tr>';
+  }).join('');
+}
+
+function copyLog(){
+  if(!log.length){alert('No exchanges logged yet.');return;}
+  var lines=['Group\tExchange\tQuestion\tQ Score\tA Score\tTotal\tTime'];
+  log.forEach(function(r){lines.push([r.group,'#'+r.ex,r.q,r.sq,r.sa,r.tot,r.time].join('\t'));});
+  navigator.clipboard.writeText(lines.join('\n')).then(function(){alert('Copied! Paste into Excel or Google Sheets.');});
+}
+
+function clearLog(){log=[];renderLog();}
+</script>
+</body>
+</html>

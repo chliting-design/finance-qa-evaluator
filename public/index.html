@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finance Q&A Evaluator</title>
+<meta name="description" content="Real-time AI evaluation of student questions and presenter responses during finance project presentations.">
+<style>
+/* ---------- Theme ---------- */
+:root{
+  --bg:#1e1e2f; --panel:#353550; --panel2:#2d2d44; --input:#3a3a55; --border:#4e4e6e;
+  --text:#eeedf8; --muted:#9a98b8; --faint:#6e6c8a;
+  --q:#7c73ff; --q-soft:#c0bbff; --q-dim:rgba(124,115,255,.22);
+  --a:#2dcb8f; --a-dim:rgba(45,203,143,.16);
+  --t:#f0a847; --rec:#f05a5a; --ok:#059669; --err:#ff7b7b;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);padding:1.5rem 1rem 3rem;min-height:100vh;line-height:1.4}
+.wrap{max-width:760px;margin:0 auto}
+button{font-family:inherit;cursor:pointer}
+button:disabled{cursor:not-allowed}
+input,select,textarea{font-family:inherit}
+
+/* ---------- Header ---------- */
+.hdr{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:1rem}
+.hdr h1{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.hdr p{font-size:12px;color:var(--muted);margin-top:3px}
+.hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hdr-right label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+select#grp{background:var(--input);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:8px;font-size:13px;font-weight:600;outline:none;max-width:260px}
+.excnt{background:linear-gradient(135deg,#6c63ff,#9d8fff);color:#fff;font-size:11px;font-weight:700;padding:6px 12px;border-radius:20px;white-space:nowrap}
+
+/* ---------- Level selector ---------- */
+.levels{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.level-btn{flex:1;min-width:180px;padding:9px 12px;border-radius:9px;border:1px solid var(--border);background:var(--input);color:var(--muted);font-size:12px;font-weight:600;text-align:left;transition:all .15s}
+.level-btn:hover{border-color:var(--q)}
+.level-btn.active{background:#6c63ff;border-color:#6c63ff;color:#fff}
+.level-note{font-size:12px;color:var(--muted);margin-bottom:12px;min-height:16px}
+
+/* ---------- Context ---------- */
+.ctx-wrap{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.ctx-wrap label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.ctx-wrap input{flex:1;background:transparent;border:none;outline:none;font-size:13px;color:var(--text)}
+.ctx-wrap input::placeholder{color:var(--faint)}
+
+/* ---------- Prompt template ---------- */
+.promptbox{background:var(--panel2);border:1px dashed var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden}
+.promptbox-hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px}
+.promptbox-hdr button.toggle{background:none;border:none;color:var(--muted);font-size:12px;font-weight:600;padding:2px 0}
+.promptbox-hdr button.toggle:hover{color:var(--text)}
+.promptbox-tag{font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;background:var(--q-dim);color:var(--q-soft)}
+.promptbox-body{display:none;padding:0 12px 12px}
+.promptbox.open .promptbox-body{display:block}
+.promptbox textarea{width:100%;min-height:220px;background:var(--input);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.55;padding:10px;resize:vertical;outline:none}
+.promptbox-actions{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.promptbox-actions .hint{font-size:11px;color:var(--faint);flex:1}
+.smallbtn{font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--input);color:var(--muted)}
+.smallbtn:hover{color:var(--text);border-color:var(--q)}
+
+/* ---------- Q / A panels ---------- */
+.panels{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+@media(max-width:560px){.panels{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;transition:border-color .2s}
+.panel.rec{border-color:var(--rec);box-shadow:0 0 0 2px rgba(240,90,90,.15)}
+.panel.has-q{border-color:var(--q)}
+.panel.has-a{border-color:var(--a)}
+.phead{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.pill{font-size:10px;font-weight:800;padding:3px 9px;border-radius:20px;letter-spacing:.04em}
+.pill.q{background:var(--q-dim);color:var(--q-soft)}
+.pill.a{background:var(--a-dim);color:var(--a)}
+.ptitle{font-size:12px;font-weight:600;flex:1}
+.ptitle.q{color:var(--q-soft)} .ptitle.a{color:var(--a)}
+.rbtn{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;font-size:11px;font-weight:700;border:none;transition:all .15s;white-space:nowrap}
+.rbtn.q-idle{background:var(--q-dim);color:var(--q-soft)}
+.rbtn.a-idle{background:var(--a-dim);color:var(--a)}
+.rbtn.recording{background:rgba(240,90,90,.2);color:var(--rec);animation:blink 1s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.45}}
+.rdot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.pbody{padding:12px 14px;min-height:84px}
+textarea.tbox{width:100%;background:transparent;border:none;outline:none;resize:none;font-size:13.5px;line-height:1.6;color:var(--text);min-height:60px;overflow:hidden}
+textarea.tbox::placeholder{color:var(--faint)}
+.clrlink{font-size:11px;color:var(--faint);background:none;border:none;text-decoration:underline;text-underline-offset:2px;display:none}
+.clrlink:hover{color:var(--muted)}
+
+/* ---------- Evaluate row ---------- */
+.evalrow{display:flex;gap:8px;margin-bottom:10px}
+.evalbtn{flex:1;padding:13px;background:linear-gradient(135deg,#6c63ff,#9d8fff);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;transition:all .18s}
+.evalbtn:hover:not(:disabled){filter:brightness(1.1);transform:translateY(-1px)}
+.evalbtn:disabled{background:var(--input);color:var(--faint);transform:none}
+.evalbtn.busy{background:var(--input);color:var(--muted)}
+.evalbtn.error{background:#7a2e2e;color:#fff}
+.nextbtn{padding:13px 16px;background:var(--input);color:var(--muted);border:1px solid var(--border);border-radius:10px;font-size:13px;font-weight:600}
+.nextbtn:hover{color:var(--text)}
+.errbox{display:none;background:rgba(240,90,90,.12);border:1px solid rgba(240,90,90,.4);color:#ffb3b3;border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:10px;white-space:pre-wrap}
+.errbox.on{display:block}
+
+/* ---------- Results ---------- */
+.scorepanel{display:none;background:var(--panel);border:1px solid var(--q);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.scorepanel.on{display:block;animation:fadeup .25s ease}
+@keyframes fadeup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.sp-label{font-size:11px;font-weight:700;color:var(--q-soft);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sp-label .meta{font-weight:500;color:var(--faint);text-transform:none;letter-spacing:0;font-family:var(--mono);font-size:11px}
+.sc-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.sc-field label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.sc-field.q label{color:var(--q-soft)} .sc-field.a label{color:var(--a)} .sc-field.t label{color:var(--t)}
+.sc-input{width:84px;padding:8px 10px;font-size:17px;font-weight:700;border-radius:8px;outline:none;text-align:center;border:2px solid;font-family:var(--mono);background:var(--input)}
+.sc-input.q{border-color:var(--q);color:var(--q-soft)}
+.sc-input.a{border-color:var(--a);color:var(--a)}
+.sc-combined{font-size:26px;font-weight:700;color:var(--t);font-family:var(--mono);padding-top:4px}
+.sc-combined span{font-size:13px;color:var(--muted);font-weight:400}
+.fb{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+@media(max-width:560px){.fb{grid-template-columns:1fr}}
+.fb-card{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.fb-card h4{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.fb-card.q h4{color:var(--q-soft)} .fb-card.a h4{color:var(--a)}
+.fb-card p{font-size:12.5px;color:var(--text);line-height:1.5}
+.fb-card .upgrade{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+.fb-card .upgrade b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
+.fb-card .why{font-size:12px;color:var(--muted);margin-top:4px;font-style:italic}
+.sp-btns{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.savebtn{flex:1;min-width:180px;padding:11px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700}
+.savebtn:hover{filter:brightness(1.1)}
+.skipbtn{padding:11px 14px;background:var(--input);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600}
+.rawtoggle{font-size:11px;color:var(--faint);background:none;border:none;text-decoration:underline}
+.raw{display:none;margin-top:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:pre-wrap;max-height:220px;overflow:auto}
+.raw.on{display:block}
+
+/* ---------- Log ---------- */
+.logwrap{display:none;margin-top:1.25rem}
+.logwrap.on{display:block}
+.loghdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px}
+.loghdr span{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.loghdr-btns{display:flex;gap:8px;flex-wrap:wrap}
+.copybtn{font-size:11px;font-weight:600;color:var(--q-soft);background:var(--q-dim);border:1px solid var(--border);border-radius:6px;padding:5px 10px}
+.copybtn:hover{filter:brightness(1.15)}
+.clrlogbtn{font-size:11px;color:var(--faint);background:none;border:none;text-decoration:underline}
+.logtable-wrap{border:1px solid var(--border);border-radius:10px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12px;min-width:720px}
+th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;background:var(--panel);border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--panel)}
+.gtag{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;background:var(--q-dim);color:var(--q-soft);white-space:nowrap}
+.ltag{display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;background:var(--input);color:var(--muted)}
+.cell{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.num{text-align:center;font-weight:700;font-family:var(--mono)}
+.num.q{color:var(--q-soft)} .num.a{color:var(--a)} .num.t{color:var(--t)}
+.delbtn{background:none;border:none;color:var(--faint);font-size:14px;line-height:1}
+.delbtn:hover{color:var(--rec)}
+.foot{margin-top:1.5rem;font-size:11px;color:var(--faint);text-align:center}
+.foot a{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hdr">
+    <div>
+      <h1>Finance Q&A Evaluator</h1>
+      <p>Record or type the question and response → Evaluate → review scores → Save to log</p>
+    </div>
+    <div class="hdr-right">
+      <label for="grp">Presenting</label>
+      <select id="grp" onchange="persist()"></select>
+      <div class="excnt" id="excnt">Exchange #1</div>
+    </div>
+  </div>
+
+  <div class="levels" id="levels"></div>
+  <div class="level-note" id="level-note"></div>
+
+  <div class="ctx-wrap">
+    <label for="ctx">Context</label>
+    <input id="ctx" type="text" placeholder="e.g. AAPL earnings miss, TSLA recall news, NVDA AI chip fundamentals…" oninput="persist()">
+  </div>
+
+  <div class="promptbox" id="promptbox">
+    <div class="promptbox-hdr">
+      <button class="toggle" onclick="togglePrompt()" id="prompt-toggle">Show prompt template ▾</button>
+      <span class="promptbox-tag" id="lvl-indicator"></span>
+    </div>
+    <div class="promptbox-body">
+      <textarea id="prompt-tpl" oninput="savePrompt()" spellcheck="false"></textarea>
+      <div class="promptbox-actions">
+        <span class="hint">Placeholders: {{GROUP}} {{EX}} {{CTX}} {{Q}} {{A}} — edits are saved in this browser for the selected level.</span>
+        <button class="smallbtn" onclick="resetPrompt()">Reset to default</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panels">
+    <div class="panel" id="pnl-q">
+      <div class="phead">
+        <span class="pill q">Q</span>
+        <span class="ptitle q">Audience question</span>
+        <button class="rbtn q-idle" id="btn-q" onclick="toggleRec('q')"><span class="rdot"></span>Record</button>
+      </div>
+      <div class="pbody">
+        <textarea class="tbox" id="txt-q" rows="3" placeholder="Record or type question…" oninput="onChange('q')"></textarea>
+        <button class="clrlink" id="clr-q" onclick="clearBox('q')">clear</button>
+      </div>
+    </div>
+    <div class="panel" id="pnl-a">
+      <div class="phead">
+        <span class="pill a">A</span>
+        <span class="ptitle a">Presenter response</span>
+        <button class="rbtn a-idle" id="btn-a" onclick="toggleRec('a')"><span class="rdot"></span>Record</button>
+      </div>
+      <div class="pbody">
+        <textarea class="tbox" id="txt-a" rows="3" placeholder="Record or type response…" oninput="onChange('a')"></textarea>
+        <button class="clrlink" id="clr-a" onclick="clearBox('a')">clear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="evalrow">
+    <button class="evalbtn" id="evalbtn" onclick="doEval()" disabled>Evaluate this exchange ↗</button>
+    <button class="nextbtn" onclick="reset()" title="Clear both boxes without logging">Next</button>
+  </div>
+  <div class="errbox" id="errbox"></div>
+
+  <div class="scorepanel" id="scorepanel">
+    <div class="sp-label"><span>AI evaluation — adjust scores if you disagree, then save</span><span class="meta" id="sp-meta"></span></div>
+    <div class="sc-grid">
+      <div class="sc-field q">
+        <label for="sc-q">Question /10</label>
+        <input class="sc-input q" id="sc-q" type="number" min="0" max="10" step="0.01" placeholder="—" oninput="calcCombined()">
+      </div>
+      <div class="sc-field a">
+        <label for="sc-a">Response /10</label>
+        <input class="sc-input a" id="sc-a" type="number" min="0" max="10" step="0.01" placeholder="—" oninput="calcCombined()">
+      </div>
+      <div class="sc-field t">
+        <label>Combined</label>
+        <div class="sc-combined" id="combined">—<span> /20</span></div>
+      </div>
+    </div>
+    <div class="fb">
+      <div class="fb-card q">
+        <h4>Question feedback</h4>
+        <p id="fb-q">—</p>
+        <div class="upgrade" id="up-q" style="display:none">
+          <b>A stronger question</b>
+          <p id="up-q-text"></p>
+          <div class="why" id="up-q-why"></div>
+        </div>
+      </div>
+      <div class="fb-card a">
+        <h4>Response feedback</h4>
+        <p id="fb-a">—</p>
+        <div class="upgrade" id="up-a" style="display:none">
+          <b>A model response</b>
+          <p id="up-a-text"></p>
+          <div class="why" id="up-a-why"></div>
+        </div>
+      </div>
+    </div>
+    <div class="sp-btns">
+      <button class="savebtn" onclick="saveAndNext()">Save to log &amp; next exchange</button>
+      <button class="skipbtn" onclick="skipNext()" title="Log this exchange without scores">Skip</button>
+      <button class="rawtoggle" onclick="toggleRaw()">raw output</button>
+    </div>
+    <div class="raw" id="raw"></div>
+  </div>
+
+  <div class="logwrap" id="logwrap">
+    <div class="loghdr">
+      <span>Session log (<span id="logcount">0</span>)</span>
+      <div class="loghdr-btns">
+        <button class="copybtn" onclick="copyLog()">Copy for Excel</button>
+        <button class="copybtn" onclick="downloadCsv()">Download CSV</button>
+        <button class="clrlogbtn" onclick="clearLog()">Clear</button>
+      </div>
+    </div>
+    <div class="logtable-wrap">
+      <table>
+        <thead><tr>
+          <th>Group</th><th>Ex</th><th>Lvl</th><th>Question</th>
+          <th style="color:var(--q-soft)">Q /10</th>
+          <th style="color:var(--a)">A /10</th>
+          <th style="color:var(--t)">Total</th>
+          <th>Q feedback</th><th>A feedback</th><th>Time</th><th></th>
+        </tr></thead>
+        <tbody id="logbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="foot">Scores are AI-generated suggestions. The instructor reviews every exchange and sets final grades.
+    Voice input uses the browser's Web Speech API (Chrome or Edge).</p>
+</div>
+
+<script>
+/* =====================================================================
+   CONFIG — edit this block for your class
+   ===================================================================== */
+
+// Endpoint of the serverless proxy (see netlify/functions/evaluate.js).
+const API_URL = "/.netlify/functions/evaluate";
+
+// Presenting groups, in presentation order. Tickers are optional but help
+// the model judge relevance. Add or remove lines freely.
+const GROUPS = [
+  "1. Group 7 — AAPL, CMI, AMD",
+  "2. Group 4 — XOM, JNJ, COST",
+  "3. Group 2 — UBER, LLY, WMT",
+  "4. Group 6 — ABNB, KO, SNDK",
+  "5. Group 1 — NVDA, NFLX",
+  "6. Group 5 — PLTR, AXP, LULU",
+  "7. Group 3 — MSFT, NKE, GOOGL",
+];
+
+// Course levels. Each has a default grading prompt. Instructors can edit
+// the prompt in the UI; edits are kept in this browser's localStorage.
+const LEVELS = {
+  entry: {
+    label: "Finance — undergrad — entry class level",
+    note: "First-year students. Generous: scores ~30% higher than the senior baseline.",
+  },
+  senior: {
+    label: "Finance — undergrad — senior level",
+    note: "Senior level (baseline). Standard rubric, strict but fair.",
+  },
+  expert: {
+    label: "Finance — graduate — expert level",
+    note: "Graduate / MBA. Scores ~20% lower than the senior baseline; demands advanced reasoning.",
+  },
+};
+
+const RUBRIC = `Score the question and response using:
+PART A — QUESTION (/10): A1 Relevance to topic /5; A2 Depth & critical thinking /5
+PART B — PRESENTER RESPONSE (/10): B1 Accuracy & financial knowledge /3.5; B2 Depth & elaboration /3.5; B3 Clarity & communication /3
+
+Use precise scores to TWO DECIMAL PLACES (e.g., 8.25, 7.50, 9.75). Do NOT round to whole numbers — distinguish between answers with finer granularity.
+
+Output STRICTLY in this format with these exact labels (no extra prose before or after):
+Q_TOTAL:[number 0.00-10.00 with two decimals]
+A_TOTAL:[number 0.00-10.00 with two decimals]
+QUESTION_FEEDBACK:[one sentence explaining what the question did well or poorly]
+QUESTION_UPGRADE:[rewrite the question in one sentence as a stronger {{LEVEL}}-level version]
+QUESTION_WHY:[one sentence explaining specifically why the upgraded version shows better analytical thinking]
+RESPONSE_FEEDBACK:[one sentence explaining what the response did well or poorly]
+RESPONSE_UPGRADE:[rewrite the response in one to two sentences as a model {{LEVEL}}-level answer]
+RESPONSE_WHY:[one sentence explaining specifically what makes the upgraded response stronger at this level]`;
+
+const HEADER = `Group: {{GROUP}} | Exchange #{{EX}}
+Context: {{CTX}}
+
+Question: "{{Q}}"
+Response: "{{A}}"`;
+
+const LEVEL_PROMPTS = {
+  entry: `[FI 118 — Introduction to Finance — UNDERGRADUATE ENTRY-LEVEL grading]
+${HEADER}
+
+GRADING CALIBRATION: First-year undergrads new to finance. Be GENEROUS — your scores should average ~30% HIGHER than for a senior undergrad. Reward genuine engagement with basic concepts; give partial credit liberally. If a typical senior-level Q score would be 6.00/10, give about 7.80/10 here. Apply the same +30% lift to the response.
+
+${RUBRIC.replace(/\{\{LEVEL\}\}/g, "entry-level undergraduate")}`,
+
+  senior: `[FI 118 — UNDERGRADUATE SENIOR-LEVEL finance grading]
+${HEADER}
+
+GRADING CALIBRATION: Senior undergrads expected to demonstrate solid command of investment fundamentals, ratio analysis, and ability to defend recommendations. Use the standard rubric — strict but fair. This is the BASELINE level. Answers that correctly identify a metric and link it to a conclusion deserve full credit even without graduate-level nuance.
+
+${RUBRIC.replace(/\{\{LEVEL\}\}/g, "undergraduate")}`,
+
+  expert: `[GRADUATE-LEVEL EXPERT FINANCE grading]
+${HEADER}
+
+GRADING CALIBRATION: Graduate-level finance students held to a HIGHER standard. Your scores should average ~20% LOWER than for a senior undergrad. Demand deep analytical reasoning, awareness of advanced concepts (e.g., risk-adjusted returns, multiples vs DCF, capital-structure trade-offs), and synthesis across perspectives. Surface-level or generic answers should not score above 6.00/10. If a typical senior-level grade would be 10.00/10, give about 8.00/10 here.
+
+${RUBRIC.replace(/\{\{LEVEL\}\}/g, "graduate")}`,
+};
+
+/* =====================================================================
+   State
+   ===================================================================== */
+const LS = {
+  level: "fqa.level", prompt: "fqa.prompt.", log: "fqa.log", n: "fqa.n",
+  code: "fqa.code", group: "fqa.group", ctx: "fqa.ctx",
+};
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recs = { q: null, a: null }, active = { q: false, a: false }, texts = { q: "", a: "" };
+let level = store.get(LS.level, "senior");
+let n = store.get(LS.n, 1);
+let log = store.get(LS.log, []);
+let pending = null;   // the evaluated-but-not-yet-saved exchange
+let busy = false;
+
+const $ = (id) => document.getElementById(id);
+
+/* =====================================================================
+   Init
+   ===================================================================== */
+function init() {
+  const grp = $("grp");
+  GROUPS.forEach((g) => { const o = document.createElement("option"); o.textContent = g; o.value = g; grp.appendChild(o); });
+  const savedGroup = store.get(LS.group, null);
+  if (savedGroup && GROUPS.includes(savedGroup)) grp.value = savedGroup;
+  $("ctx").value = store.get(LS.ctx, "");
+
+  const lv = $("levels");
+  Object.keys(LEVELS).forEach((k) => {
+    const b = document.createElement("button");
+    b.id = "lvl-" + k; b.className = "level-btn"; b.textContent = LEVELS[k].label;
+    b.onclick = () => applyLevel(k);
+    lv.appendChild(b);
+  });
+  applyLevel(LEVELS[level] ? level : "senior");
+  $("excnt").textContent = "Exchange #" + n;
+  renderLog();
+}
+
+function persist() {
+  store.set(LS.group, $("grp").value);
+  store.set(LS.ctx, $("ctx").value);
+}
+
+/* =====================================================================
+   Level + prompt template
+   ===================================================================== */
+function applyLevel(k) {
+  level = k; store.set(LS.level, k);
+  Object.keys(LEVELS).forEach((x) => $("lvl-" + x).classList.toggle("active", x === k));
+  $("level-note").textContent = LEVELS[k].note;
+  $("lvl-indicator").textContent = LEVELS[k].label;
+  loadPrompt();
+}
+function loadPrompt() {
+  const saved = store.get(LS.prompt + level, null);
+  $("prompt-tpl").value = saved || LEVEL_PROMPTS[level];
+}
+function savePrompt() { store.set(LS.prompt + level, $("prompt-tpl").value); }
+function resetPrompt() {
+  if (!confirm("Reset the " + LEVELS[level].label + " prompt to the default?")) return;
+  store.del(LS.prompt + level); loadPrompt();
+}
+function togglePrompt() {
+  const open = $("promptbox").classList.toggle("open");
+  $("prompt-toggle").textContent = open ? "Hide prompt template ▴" : "Show prompt template ▾";
+}
+
+/* =====================================================================
+   Q / A inputs
+   ===================================================================== */
+function onChange(side) {
+  const ta = $("txt-" + side);
+  texts[side] = ta.value;
+  autosize(ta);
+  $("clr-" + side).style.display = ta.value.trim() ? "block" : "none";
+  paintPanel(side);
+  checkReady();
+}
+function autosize(ta) { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
+function paintPanel(side) {
+  const p = $("pnl-" + side);
+  p.className = "panel" + (active[side] ? " rec" : texts[side].trim() ? (side === "q" ? " has-q" : " has-a") : "");
+}
+function checkReady() {
+  const ready = texts.q.trim().length > 3 && texts.a.trim().length > 3;
+  const eb = $("evalbtn");
+  if (!busy) { eb.disabled = !ready; eb.textContent = pending ? "Re-evaluate ↗" : "Evaluate this exchange ↗"; eb.className = "evalbtn"; }
+}
+function clearBox(side) {
+  texts[side] = "";
+  const ta = $("txt-" + side); ta.value = ""; ta.style.height = "auto";
+  $("clr-" + side).style.display = "none";
+  paintPanel(side); checkReady();
+}
+
+/* ---------- Voice (Web Speech API) ---------- */
+function toggleRec(side) {
+  if (!SR) { showError("Voice recording needs Chrome or Edge. Please type instead."); return; }
+  active[side] ? stopRec(side) : startRec(side);
+}
+function startRec(side) {
+  const other = side === "q" ? "a" : "q";
+  if (active[other]) stopRec(other);
+  const r = new SR(); r.continuous = true; r.interimResults = true; r.lang = "en-US";
+  let finalText = texts[side].trim() ? texts[side].trim() + " " : "";
+  r.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript + " ";
+      else interim += e.results[i][0].transcript;
+    }
+    const ta = $("txt-" + side); ta.value = finalText + interim; texts[side] = ta.value;
+    autosize(ta); $("clr-" + side).style.display = ta.value.trim() ? "block" : "none"; checkReady();
+  };
+  r.onerror = (e) => { if (e.error !== "no-speech" && e.error !== "aborted") { showError("Microphone error: " + e.error); stopRec(side); } };
+  r.onend = () => { if (active[side]) { try { r.start(); } catch {} } };
+  recs[side] = r; active[side] = true;
+  try { r.start(); } catch (err) { showError("Could not start microphone: " + err.message); active[side] = false; return; }
+  const btn = $("btn-" + side); btn.className = "rbtn recording"; btn.innerHTML = '<span class="rdot"></span>Stop';
+  paintPanel(side);
+}
+function stopRec(side) {
+  active[side] = false;
+  if (recs[side]) { try { recs[side].stop(); } catch {} recs[side] = null; }
+  const btn = $("btn-" + side); btn.className = "rbtn " + (side === "q" ? "q-idle" : "a-idle"); btn.innerHTML = '<span class="rdot"></span>Record';
+  paintPanel(side); checkReady();
+}
+
+/* =====================================================================
+   Evaluate
+   ===================================================================== */
+function renderPrompt(grp, ctx, q, a) {
+  return $("prompt-tpl").value
+    .replace(/\{\{GROUP\}\}/g, grp).replace(/\{\{EX\}\}/g, String(n))
+    .replace(/\{\{CTX\}\}/g, ctx).replace(/\{\{Q\}\}/g, q).replace(/\{\{A\}\}/g, a);
+}
+
+async function callApi(prompt) {
+  const headers = { "Content-Type": "application/json" };
+  const code = store.get(LS.code, "");
+  if (code) headers["X-Access-Code"] = code;
+  const res = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify({ prompt }) });
+  let data = {};
+  try { data = await res.json(); } catch {}
+  if (res.status === 401) {
+    const entered = window.prompt("Enter the instructor access code for this evaluator:");
+    if (entered === null) throw new Error("Access code required.");
+    store.set(LS.code, entered.trim());
+    return callApi(prompt);
+  }
+  if (!res.ok) throw new Error(data.error || ("Request failed (" + res.status + ")"));
+  return data;
+}
+
+function parseResult(text) {
+  const get = (label) => {
+    const m = text.match(new RegExp("^\\s*" + label + "\\s*:\\s*(.+)$", "mi"));
+    return m ? m[1].trim().replace(/^\[+|\]+$/g, "").trim() : "";
+  };
+  const num = (v) => { const m = (v || "").match(/-?\d+(?:\.\d+)?/); return m ? Math.min(10, Math.max(0, parseFloat(m[0]))) : NaN; };
+  return {
+    q: num(get("Q_TOTAL")), a: num(get("A_TOTAL")),
+    qfb: get("QUESTION_FEEDBACK"), afb: get("RESPONSE_FEEDBACK"),
+    qup: get("QUESTION_UPGRADE"), qwhy: get("QUESTION_WHY"),
+    aup: get("RESPONSE_UPGRADE"), awhy: get("RESPONSE_WHY"),
+  };
+}
+
+async function doEval() {
+  if (busy) return;
+  const grp = $("grp").value;
+  const ctx = $("ctx").value.trim() || "finance presentation";
+  const q = texts.q.trim(), a = texts.a.trim();
+  if (!q || !a) return;
+  if (active.q) stopRec("q"); if (active.a) stopRec("a");
+
+  hideError();
+  busy = true;
+  const eb = $("evalbtn"); eb.disabled = true; eb.className = "evalbtn busy"; eb.textContent = "Evaluating…";
+  const t0 = performance.now();
+
+  try {
+    const data = await callApi(renderPrompt(grp, ctx, q, a));
+    const r = parseResult(data.text || "");
+    if (isNaN(r.q) || isNaN(r.a)) {
+      showError("The model replied, but scores could not be parsed. Enter them manually or re-evaluate.\n\n" + (data.text || "").slice(0, 600));
+    }
+    pending = {
+      group: grp, ex: n, level, ctx, q, a,
+      sq: isNaN(r.q) ? "" : r.q, sa: isNaN(r.a) ? "" : r.a,
+      qfb: r.qfb, afb: r.afb, qup: r.qup, qwhy: r.qwhy, aup: r.aup, awhy: r.awhy,
+      raw: data.text || "", model: data.model || "",
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      iso: new Date().toISOString(),
+    };
+    showResult(pending, Math.round(performance.now() - t0));
+  } catch (err) {
+    showError(err.message || String(err));
+    eb.className = "evalbtn error"; eb.textContent = "Evaluation failed — try again";
+  } finally {
+    busy = false;
+    setTimeout(checkReady, pending ? 0 : 1200);
+    if (pending) checkReady();
+  }
+}
+
+function showResult(r, ms) {
+  $("sc-q").value = r.sq === "" ? "" : r.sq.toFixed(2);
+  $("sc-a").value = r.sa === "" ? "" : r.sa.toFixed(2);
+  calcCombined();
+  $("fb-q").textContent = r.qfb || "—";
+  $("fb-a").textContent = r.afb || "—";
+  setUpgrade("q", r.qup, r.qwhy); setUpgrade("a", r.aup, r.awhy);
+  $("raw").textContent = r.raw; $("raw").className = "raw";
+  $("sp-meta").textContent = (r.model ? r.model + " · " : "") + (ms / 1000).toFixed(1) + "s";
+  $("scorepanel").className = "scorepanel on";
+  $("scorepanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function setUpgrade(side, text, why) {
+  const box = $("up-" + side);
+  if (!text) { box.style.display = "none"; return; }
+  box.style.display = "block"; $("up-" + side + "-text").textContent = text; $("up-" + side + "-why").textContent = why || "";
+}
+function calcCombined() {
+  const q = parseFloat($("sc-q").value), a = parseFloat($("sc-a").value);
+  $("combined").innerHTML = (isNaN(q) || isNaN(a) ? "—" : (q + a).toFixed(2)) + "<span> /20</span>";
+}
+function toggleRaw() { $("raw").classList.toggle("on"); }
+
+/* =====================================================================
+   Save / skip / reset
+   ===================================================================== */
+function saveAndNext() {
+  if (!pending) return;
+  const sq = parseFloat($("sc-q").value), sa = parseFloat($("sc-a").value);
+  if (isNaN(sq) || isNaN(sa)) { showError("Please enter both scores before saving."); return; }
+  pending.sq = Math.round(sq * 100) / 100; pending.sa = Math.round(sa * 100) / 100;
+  pending.tot = Math.round((pending.sq + pending.sa) * 100) / 100;
+  commit(pending);
+}
+function skipNext() {
+  if (pending) { pending.sq = ""; pending.sa = ""; pending.tot = ""; commit(pending); } else reset();
+}
+function commit(entry) {
+  log.push(entry); store.set(LS.log, log);
+  n += 1; store.set(LS.n, n);
+  $("excnt").textContent = "Exchange #" + n;
+  renderLog(); reset();
+}
+function reset() {
+  pending = null;
+  clearBox("q"); clearBox("a");
+  if (active.q) stopRec("q"); if (active.a) stopRec("a");
+  $("scorepanel").className = "scorepanel";
+  hideError(); checkReady();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/* =====================================================================
+   Log
+   ===================================================================== */
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = (v) => v === "" || v === undefined ? "—" : Number(v).toFixed(2);
+const short = (s, k) => { s = String(s || ""); return s.length > k ? s.slice(0, k - 1) + "…" : s; };
+
+function renderLog() {
+  $("logcount").textContent = log.length;
+  if (!log.length) { $("logwrap").className = "logwrap"; return; }
+  $("logwrap").className = "logwrap on";
+  $("logbody").innerHTML = log.slice().reverse().map((r, i) => {
+    const idx = log.length - 1 - i;
+    return `<tr>
+      <td><span class="gtag">${esc(r.group)}</span></td>
+      <td>#${r.ex}</td>
+      <td><span class="ltag">${esc(r.level)}</span></td>
+      <td class="cell" title="${esc(r.q)}">${esc(short(r.q, 60))}</td>
+      <td class="num q">${fmt(r.sq)}</td>
+      <td class="num a">${fmt(r.sa)}</td>
+      <td class="num t">${fmt(r.tot)}</td>
+      <td class="cell" title="${esc(r.qfb)}">${esc(short(r.qfb, 50))}</td>
+      <td class="cell" title="${esc(r.afb)}">${esc(short(r.afb, 50))}</td>
+      <td>${esc(r.time)}</td>
+      <td><button class="delbtn" title="Remove this row" onclick="removeRow(${idx})">×</button></td>
+    </tr>`;
+  }).join("");
+}
+function removeRow(idx) {
+  if (!confirm("Remove this exchange from the log?")) return;
+  log.splice(idx, 1); store.set(LS.log, log); renderLog();
+}
+
+const COLUMNS = [
+  ["Group", "group"], ["Exchange", "ex"], ["Level", "level"], ["Context", "ctx"],
+  ["Question", "q"], ["Response", "a"],
+  ["Q Score (/10)", "sq"], ["A Score (/10)", "sa"], ["Total (/20)", "tot"],
+  ["Question Feedback", "qfb"], ["Question Upgrade", "qup"], ["Question Why", "qwhy"],
+  ["Response Feedback", "afb"], ["Response Upgrade", "aup"], ["Response Why", "awhy"],
+  ["Model", "model"], ["Time", "time"], ["Timestamp", "iso"],
+];
+const tsvSafe = (v) => String(v ?? "").replace(/[\t\r\n]+/g, " ").trim();
+const csvSafe = (v) => { const s = String(v ?? ""); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+
+function copyLog() {
+  if (!log.length) { showError("No exchanges logged yet."); return; }
+  const lines = [COLUMNS.map((c) => c[0]).join("\t")];
+  log.forEach((r) => lines.push(COLUMNS.map((c) => tsvSafe(r[c[1]])).join("\t")));
+  navigator.clipboard.writeText(lines.join("\n")).then(
+    () => flash("Copied " + log.length + " rows — paste into Excel or Google Sheets."),
+    () => showError("Clipboard blocked by the browser. Use Download CSV instead."));
+}
+function downloadCsv() {
+  if (!log.length) { showError("No exchanges logged yet."); return; }
+  const lines = [COLUMNS.map((c) => csvSafe(c[0])).join(",")];
+  log.forEach((r) => lines.push(COLUMNS.map((c) => csvSafe(r[c[1]])).join(",")));
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "qa-evaluations-" + new Date().toISOString().slice(0, 10) + ".csv";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function clearLog() {
+  if (!log.length) return;
+  if (!confirm("Clear all " + log.length + " logged exchanges and reset the exchange counter? Copy or download first if you need them.")) return;
+  log = []; store.set(LS.log, log); n = 1; store.set(LS.n, n);
+  $("excnt").textContent = "Exchange #1"; renderLog();
+}
+
+/* =====================================================================
+   Messages
+   ===================================================================== */
+function showError(msg) { const b = $("errbox"); b.textContent = msg; b.className = "errbox on"; }
+function hideError() { $("errbox").className = "errbox"; }
+function flash(msg) {
+  const b = $("errbox"); b.textContent = msg; b.className = "errbox on";
+  b.style.background = "rgba(45,203,143,.12)"; b.style.borderColor = "rgba(45,203,143,.4)"; b.style.color = "#9fe1cb";
+  setTimeout(() => { b.className = "errbox"; b.style.background = ""; b.style.borderColor = ""; b.style.color = ""; }, 2500);
+}
+
+init();
+</script>
+</body>
+</html>
