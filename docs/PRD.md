@@ -6,7 +6,8 @@
 
 > **Implementation note (Oct 2026).** This is the original v1.0 specification written before the
 > first build. The shipped version differs in three ways: (1) the model is called through a Netlify
-> serverless function and OpenRouter (`anthropic/claude-haiku-4.5`) rather than directly from the
+> serverless function and OpenRouter (`anthropic/claude-opus-5.5`; the Spring 2026 pilot ran on
+> `anthropic/claude-haiku-4.5`) rather than directly from the
 > browser, so no API key is ever exposed client-side; (2) the presenter response is scored /10
 > (B1 3.5 + B2 3.5 + B3 3) rather than /15, so the combined score is /20; (3) three course-level
 > prompt variants replaced the single prompt in §7.2, and the output gained `*_UPGRADE` / `*_WHY`

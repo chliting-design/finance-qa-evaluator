@@ -15,7 +15,9 @@
 //   4xx/5xx { "error": "<message>" }
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
+// Any OpenRouter model id works here; override with the MODEL env var.
+// Cheaper alternative with the same prompts: "anthropic/claude-haiku-4.5".
+const DEFAULT_MODEL = "anthropic/claude-opus-5.5";
 const MAX_PROMPT_CHARS = 20000;
 
 const json = (statusCode, body) => ({

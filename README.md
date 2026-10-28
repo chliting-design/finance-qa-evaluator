@@ -56,7 +56,7 @@ A separate, pre-class prompt for grading the **slide decks** themselves (100-poi
 Browser (public/index.html)            Netlify Function                 OpenRouter
 ┌──────────────────────────┐   POST    ┌──────────────────────────┐    ┌───────────────────────┐
 │ Web Speech API (voice)   │ ───────▶  │ netlify/functions/       │ ─▶ │ anthropic/            │
-│ prompt template + rubric │  {prompt} │   evaluate.js            │    │   claude-haiku-4.5    │
+│ prompt template + rubric │  {prompt} │   evaluate.js            │    │   claude-opus-5.5     │
 │ parse Q_TOTAL / A_TOTAL  │ ◀───────  │ holds OPENROUTER_API_KEY │ ◀─ │                       │
 │ session log (localStorage)│  {text}  │ optional ACCESS_CODE     │    └───────────────────────┘
 └──────────────────────────┘           └──────────────────────────┘
@@ -86,8 +86,9 @@ Browser (public/index.html)            Netlify Function                 OpenRout
 ## Deploy your own (about 10 minutes)
 
 ### 1. Get an OpenRouter key
-Create one at <https://openrouter.ai/keys> and add a few dollars of credit. Claude Haiku 4.5 costs
-well under a cent per exchange.
+Create one at <https://openrouter.ai/keys> and add a few dollars of credit. The default model,
+Claude Opus 5.5, costs about one cent per exchange at OpenRouter's current rates ($4 / $20 per
+million input / output tokens); Claude Haiku 4.5 is roughly four times cheaper if you prefer.
 
 ### 2. Deploy to Netlify
 1. Fork or clone this repository to your own GitHub account.
@@ -97,7 +98,8 @@ well under a cent per exchange.
 3. **Site configuration → Environment variables** → add:
    - `OPENROUTER_API_KEY` = your key (required)
    - `ACCESS_CODE` = any passphrase you choose (recommended)
-   - `MODEL`, `MAX_TOKENS`, `TEMPERATURE` (optional overrides)
+   - `MODEL` (optional; defaults to `anthropic/claude-opus-5.5` — set to `anthropic/claude-haiku-4.5`
+     for the cheaper model), `MAX_TOKENS`, `TEMPERATURE`
 4. **Deploy.** Your evaluator is live at `https://<site-name>.netlify.app/`
    (the legacy path `/evaluator` also works).
 
